@@ -10,16 +10,66 @@ import tempfile
 
 class CommerceReadinessChecker:
     def __init__(self):
-        self.required_fields = [
-            "enable_search", "enable_checkout", "id", "title", "description", 
-            "link", "image_link", "price", "currency", "availability", "brand",
-            "gtin_or_mpn", "material", "weight", "inventory_quantity",
-            "seller_name", "seller_url", "return_policy", "return_window"
+        # ACP Feed API 2026-04-17 - Product fields (required)
+        self.acp_product_required_fields = [
+            "id", "title"
         ]
         
-        self.recommended_fields = [
+        # ACP Feed API 2026-04-17 - Product fields (recommended)
+        self.acp_product_recommended_fields = [
+            "description", "url", "media"
+        ]
+        
+        # ACP Feed API 2026-04-17 - Variant fields (required)
+        self.acp_variant_required_fields = [
+            "id", "price", "availability"
+        ]
+        
+        # ACP Feed API 2026-04-17 - Variant fields (recommended)
+        self.acp_variant_recommended_fields = [
+            "title", "description", "url", "media", "list_price", 
+            "categories", "condition", "variant_options", "seller"
+        ]
+        
+        # Google Merchant Center fields (backward compatibility)
+        self.gmc_required_fields = [
+            "id", "title", "description", "link", "image_link", 
+            "price", "currency", "availability", "brand"
+        ]
+        
+        self.gmc_recommended_fields = [
             "additional_image_link", "product_category", "color", "size"
         ]
+
+    def parse_feed(self, content: str, format: str = "auto") -> tuple:
+        """Parse feed in XML (GMC) or JSON (ACP) format
+        
+        Returns: (products_list, feed_format, metadata)
+        """
+        if not content or not content.strip():
+            return [], "unknown", {}
+        
+        # Auto-detect format
+        if format == "auto":
+            content = content.strip()
+            if content.startswith("{"):
+                format = "json"
+            elif content.startswith("<"):
+                format = "xml"
+            else:
+                format = "json"  # Default to JSON
+        
+        try:
+            if format == "xml":
+                products = self.parse_xml_feed(content)
+                return products, "xml", {"source": "Google Merchant Center"}
+            elif format == "json":
+                products, metadata = self.parse_acp_json_feed(content)
+                return products, "json", metadata
+            else:
+                raise ValueError(f"Unsupported format: {format}")
+        except Exception as e:
+            raise ValueError(f"Erreur parsing feed: {str(e)}")
 
     def parse_xml_feed(self, xml_content: str) -> List[Dict]:
         """Parse Google Merchant XML feed"""
@@ -32,12 +82,77 @@ class CommerceReadinessChecker:
             
             for item in root.findall('.//item'):
                 product = self._extract_product_data(item)
-                if product:  # Only add valid products
+                if product:
                     products.append(product)
                 
             return products
         except Exception as e:
             raise ValueError(f"Erreur parsing XML: {str(e)}")
+
+    def parse_acp_json_feed(self, json_content: str) -> tuple:
+        """Parse ACP Feed API JSON format (2026-04-17)
+        
+        Expected format:
+        {
+            "products": [
+                {
+                    "id": "prod_id",
+                    "title": "Product Title",
+                    "description": "...",
+                    "url": "...",
+                    "media": [...],
+                    "variants": [
+                        {
+                            "id": "variant_id",
+                            "title": "...",
+                            "price": 100,
+                            "availability": "in_stock",
+                            ...
+                        }
+                    ]
+                }
+            ]
+        }
+        """
+        try:
+            data = json.loads(json_content)
+            
+            # Handle both direct products array and wrapped format
+            if isinstance(data, list):
+                products_data = data
+                metadata = {"source": "ACP Feed API (direct array)"}
+            elif isinstance(data, dict):
+                if "products" in data:
+                    products_data = data["products"]
+                    metadata = {"source": "ACP Feed API", "feed_id": data.get("id"), "target_country": data.get("target_country")}
+                else:
+                    products_data = [data]  # Single product
+                    metadata = {"source": "ACP Feed API (single product)"}
+            else:
+                raise ValueError("Invalid JSON structure")
+            
+            # Flatten products and variants for analysis
+            products = []
+            for product in products_data:
+                if "variants" in product and product["variants"]:
+                    # Extract each variant as a separate product for analysis
+                    for variant in product["variants"]:
+                        # Merge product-level fields with variant-level fields
+                        merged = {
+                            **product,
+                            **variant,
+                            "product_id": product.get("id"),
+                            "variant_id": variant.get("id"),
+                            "is_variant": True
+                        }
+                        products.append(merged)
+                else:
+                    # Product without variants (treat as single item)
+                    products.append({**product, "is_variant": False})
+            
+            return products, metadata
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Erreur parsing JSON: {str(e)}")
 
     def _extract_product_data(self, item) -> Dict:
         """Extract and normalize product data from XML item"""
@@ -107,48 +222,71 @@ class CommerceReadinessChecker:
     def _get_namespace(self):
         return "http://base.google.com/ns/1.0"
     
-    def _analyze_fields_detailed(self, products: List[Dict]) -> Dict:
-        """Analyze field coverage in detail with visual status"""
+    def _analyze_fields_detailed(self, products: List[Dict], feed_format: str = "xml") -> Dict:
+        """Analyze field coverage in detail with visual status
+        
+        Args:
+            products: List of product dictionaries
+            feed_format: "xml" for Google Merchant Center, "json" for ACP Feed API
+        """
         total_products = len(products)
         if total_products == 0:
             return {}
         
-        field_categories = {
-            "OPENAI FLAGS": {
-                "enable_search": {"required": True, "description": "Required field 'enable_search' is missing"},
-                "enable_checkout": {"required": True, "description": "Required field 'enable_checkout' is missing"}
-            },
-            "BASIC PRODUCT DATA": {
-                "id": {"required": True, "description": "Required field 'id' is missing"},
-                "title": {"required": True, "description": "Required field 'title' is missing"},
-                "description": {"required": True, "description": "Required field 'description' is missing"},
-                "link": {"required": True, "description": "Required field 'link' is missing"},
-                "image_link": {"required": True, "description": "Required field 'image_link' is missing"},
-                "additional_image_link": {"required": False, "description": "Not set"}
-            },
-            "PRICING & AVAILABILITY": {
-                "price": {"required": True, "description": "Required field 'price' is missing"},
-                "currency": {"required": True, "description": "Required field 'currency' is missing"},
-                "availability": {"required": True, "description": "Required field 'availability' is missing"},
-                "inventory_quantity": {"required": True, "description": "Required field 'inventory_quantity' is missing"}
-            },
-            "ITEM INFORMATION": {
-                "brand": {"required": True, "description": "Required for all products except movies, books, and musical recordings"},
-                "gtin": {"required": False, "description": "Not set"},
-                "mpn": {"required": False, "description": "Manufacturer part number (required if no GTIN)"},
-                "product_category": {"required": True, "description": "Required field 'product_category' is missing"},
-                "material": {"required": True, "description": "Required field 'material' is missing"},
-                "weight": {"required": True, "description": "Required field 'weight' is missing"},
-                "color": {"required": False, "description": "Not set"},
-                "size": {"required": False, "description": "Not set"}
-            },
-            "MERCHANT INFO": {
-                "seller_name": {"required": True, "description": "Required field 'seller_name' is missing"},
-                "seller_url": {"required": True, "description": "Required field 'seller_url' is missing"},
-                "return_policy": {"required": True, "description": "Required field 'return_policy' is missing"},
-                "return_window": {"required": True, "description": "Required field 'return_window' is missing"}
+        if feed_format == "json":
+            # ACP Feed API 2026-04-17 field categories
+            field_categories = {
+                "ACP PRODUCT (Required)": {
+                    "id": {"required": True, "description": "Product ID - required for ACP Feed API"},
+                    "title": {"required": True, "description": "Product title - required for ACP Feed API"}
+                },
+                "ACP PRODUCT (Recommended)": {
+                    "description": {"required": False, "description": "Product description - recommended for better agent understanding"},
+                    "url": {"required": False, "description": "Product URL - recommended for navigation"},
+                    "media": {"required": False, "description": "Product media/images - recommended for visual discovery"}
+                },
+                "ACP VARIANT (Required)": {
+                    "id": {"required": True, "description": "Variant ID - required for checkout (use variant_id for variants)"},
+                    "price": {"required": True, "description": "Variant price - required for purchase"},
+                    "availability": {"required": True, "description": "Availability status - required for purchasability"}
+                },
+                "ACP VARIANT (Recommended)": {
+                    "title": {"required": False, "description": "Variant title - recommended for variant selection"},
+                    "description": {"required": False, "description": "Variant description - recommended for variant details"},
+                    "url": {"required": False, "description": "Variant URL - recommended for variant-specific navigation"},
+                    "media": {"required": False, "description": "Variant media - recommended for variant-specific images"},
+                    "list_price": {"required": False, "description": "List price for discounts - recommended for pricing context"},
+                    "categories": {"required": False, "description": "Product categories - recommended for filtering"},
+                    "condition": {"required": False, "description": "Item condition - recommended for comparison"},
+                    "variant_options": {"required": False, "description": "Variant options (size, color, etc.) - recommended for selection"},
+                    "seller": {"required": False, "description": "Seller information - recommended for marketplace context"}
+                }
             }
-        }
+        else:
+            # Google Merchant Center field categories (backward compatibility)
+            field_categories = {
+                "BASIC PRODUCT DATA": {
+                    "id": {"required": True, "description": "Required field 'id' is missing"},
+                    "title": {"required": True, "description": "Required field 'title' is missing"},
+                    "description": {"required": True, "description": "Required field 'description' is missing"},
+                    "link": {"required": True, "description": "Required field 'link' is missing"},
+                    "image_link": {"required": True, "description": "Required field 'image_link' is missing"},
+                    "additional_image_link": {"required": False, "description": "Not set"}
+                },
+                "PRICING & AVAILABILITY": {
+                    "price": {"required": True, "description": "Required field 'price' is missing"},
+                    "currency": {"required": True, "description": "Required field 'currency' is missing"},
+                    "availability": {"required": True, "description": "Required field 'availability' is missing"}
+                },
+                "ITEM INFORMATION": {
+                    "brand": {"required": True, "description": "Required for all products except movies, books, and musical recordings"},
+                    "gtin": {"required": False, "description": "Not set"},
+                    "mpn": {"required": False, "description": "Manufacturer part number (required if no GTIN)"},
+                    "product_category": {"required": True, "description": "Required field 'product_category' is missing"},
+                    "color": {"required": False, "description": "Not set"},
+                    "size": {"required": False, "description": "Not set"}
+                }
+            }
         
         analysis = {}
         
@@ -159,6 +297,9 @@ class CommerceReadinessChecker:
                 count_with_field = 0
                 for product in products:
                     value = product.get(field_name)
+                    # For variants, check variant_id if id is the product_id
+                    if field_name == "id" and product.get("is_variant"):
+                        value = product.get("variant_id")
                     if value is not None and value != "" and value != 0:
                         count_with_field += 1
                 
@@ -186,15 +327,6 @@ class CommerceReadinessChecker:
                         status = "— Not Set"
                         status_class = "not_set"
                 
-                if field_name in ["gtin", "mpn"]:
-                    gtin_count = sum(1 for p in products if p.get("gtin"))
-                    mpn_count = sum(1 for p in products if p.get("mpn"))
-                    combined_coverage = (gtin_count + mpn_count) / total_products
-                    
-                    if field_name == "gtin" and combined_coverage >= 0.95:
-                        status = "✅ Pass"
-                        status_class = "pass"
-                
                 category_analysis.append({
                     "field": field_name.replace("_", " ").title(),
                     "status": status,
@@ -209,14 +341,19 @@ class CommerceReadinessChecker:
         
         return analysis
 
-    def check_acp_compliance(self, product: Dict) -> Dict:
-        """Check ACP compliance for a single product"""
+    def check_acp_compliance(self, product: Dict, feed_format: str = "xml") -> Dict:
+        """Check ACP compliance for a single product
+        
+        Args:
+            product: Product dictionary
+            feed_format: "xml" for Google Merchant Center, "json" for ACP Feed API
+        """
         if not product:
             return {
                 "id": "unknown",
                 "title": "",
-                "missing_required": self.required_fields.copy(),
-                "missing_recommended": self.recommended_fields.copy(),
+                "missing_required": [],
+                "missing_recommended": [],
                 "score": 0.0,
                 "product_category": "Unknown"
             }
@@ -224,44 +361,68 @@ class CommerceReadinessChecker:
         missing_required = []
         missing_recommended = []
 
-        for field in ["enable_search", "enable_checkout", "material", "weight", 
-                     "inventory_quantity", "seller_name", "seller_url", 
-                     "return_policy", "return_window"]:
-            if not product.get(field):
-                missing_required.append(field)
+        if feed_format == "json":
+            # ACP Feed API 2026-04-17 compliance check
+            # Check Product required fields
+            for field in self.acp_product_required_fields:
+                if not product.get(field):
+                    missing_required.append(f"product.{field}")
+            
+            # Check Variant required fields
+            for field in self.acp_variant_required_fields:
+                value = product.get(field)
+                # For variants, check variant_id if id is the product_id
+                if field == "id" and product.get("is_variant"):
+                    value = product.get("variant_id")
+                if not value:
+                    missing_required.append(f"variant.{field}")
+            
+            # Check Product recommended fields
+            for field in self.acp_product_recommended_fields:
+                if not product.get(field):
+                    missing_recommended.append(f"product.{field}")
+            
+            # Check Variant recommended fields
+            for field in self.acp_variant_recommended_fields:
+                if not product.get(field):
+                    missing_recommended.append(f"variant.{field}")
+            
+            # Calculate score based on ACP fields
+            total_required = len(self.acp_product_required_fields) + len(self.acp_variant_required_fields)
+            missing_count = len(missing_required)
+            score = max(0, 100 * (total_required - missing_count) / total_required) if total_required > 0 else 0
+            
+            return {
+                "id": product.get("variant_id") if product.get("is_variant") else product.get("id", ""),
+                "title": product.get("title", "")[:50] + "..." if product.get("title", "") else "",
+                "missing_required": missing_required,
+                "missing_recommended": missing_recommended,
+                "score": round(score, 1),
+                "product_category": product.get("categories", ["Unknown"])[0] if product.get("categories") else "Unknown",
+                "is_variant": product.get("is_variant", False)
+            }
+        else:
+            # Google Merchant Center compliance check (backward compatibility)
+            for field in self.gmc_required_fields:
+                if not product.get(field):
+                    missing_required.append(field)
 
-        for field in ["id", "title", "description", "link", "image_link", 
-                     "price", "currency", "availability", "brand"]:
-            if not product.get(field):
-                missing_required.append(field)
+            for field in self.gmc_recommended_fields:
+                if not product.get(field):
+                    missing_recommended.append(field)
 
-        if not product.get("gtin") and not product.get("mpn"):
-            missing_required.append("gtin_or_mpn")
+            total_required = len(self.gmc_required_fields)
+            missing_count = len(set(missing_required))
+            score = max(0, 100 * (total_required - missing_count) / total_required) if total_required > 0 else 0
 
-        if not product.get("additional_image_link"):
-            missing_recommended.append("additional_image_link")
-        if not product.get("product_category"):
-            missing_recommended.append("product_category")
-
-        category = (product.get("product_category") or "").lower()
-        if any(x in category for x in ["chaussures", "apparel", "shoes", "clothing"]):
-            if not product.get("color"):
-                missing_recommended.append("color")
-            if not product.get("size"):
-                missing_recommended.append("size")
-
-        total_required = len(self.required_fields)
-        missing_count = len(set(missing_required))
-        score = max(0, 100 * (total_required - missing_count) / total_required)
-
-        return {
-            "id": product["id"],
-            "title": product.get("title", "")[:50] + "..." if product.get("title", "") else "",
-            "missing_required": list(set(missing_required)),
-            "missing_recommended": list(set(missing_recommended)),
-            "score": round(score, 1),
-            "product_category": product.get("product_category", "Unknown")
-        }
+            return {
+                "id": product["id"],
+                "title": product.get("title", "")[:50] + "..." if product.get("title", "") else "",
+                "missing_required": list(set(missing_required)),
+                "missing_recommended": list(set(missing_recommended)),
+                "score": round(score, 1),
+                "product_category": product.get("product_category", "Unknown")
+            }
 
     def check_google_ai_product(self, product: Dict) -> Dict:
         """Check Google AI Shopping readiness for a single product"""
@@ -847,22 +1008,42 @@ class CommerceReadinessChecker:
         return """
         <div class="category-card" style="margin: 24px;">
             <div class="category-header">
-                <h2 class="category-title">📘 Documentation ACP (OpenAI)</h2>
+                <h2 class="category-title">📘 ACP Feed API 2026-04-17 (Nouveau Standard)</h2>
             </div>
             <div style="padding: 20px;">
-                <h3 style="color: #0079B2;">Champs Requis pour ACP</h3>
+                <h3 style="color: #0079B2;">Format JSON - Push Model</h3>
+                <p style="color: #666; margin-bottom: 16px;">ACP utilise maintenant un Feed API où les merchants pushent les produits vers les agents via API (pas de pull XML).</p>
+                <h4 style="color: #0079B2;">Product Fields (Requis)</h4>
                 <ul style="line-height: 1.8;">
-                    <li><strong>enable_search</strong>: Permet aux agents IA de rechercher le produit</li>
-                    <li><strong>enable_checkout</strong>: Permet aux agents IA d'effectuer l'achat</li>
-                    <li><strong>inventory_quantity</strong>: Quantité en stock</li>
-                    <li><strong>seller_name, seller_url</strong>: Informations sur le vendeur</li>
-                    <li><strong>return_policy, return_window</strong>: Politique de retour</li>
+                    <li><strong>id</strong>: Identifiant stable du produit</li>
+                    <li><strong>title</strong>: Titre du produit</li>
+                </ul>
+                <h4 style="color: #0079B2;">Product Fields (Recommandés)</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>description</strong>: Description du produit</li>
+                    <li><strong>url</strong>: URL du produit</li>
+                    <li><strong>media</strong>: Images du produit</li>
+                </ul>
+                <h4 style="color: #0079B2;">Variant Fields (Requis)</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>id</strong>: Identifiant de la variante (pour checkout)</li>
+                    <li><strong>price</strong>: Prix de la variante</li>
+                    <li><strong>availability</strong>: Disponibilité</li>
+                </ul>
+                <h4 style="color: #0079B2;">Variant Fields (Recommandés)</h4>
+                <ul style="line-height: 1.8;">
+                    <li><strong>title, description, url, media</strong>: Contexte variante</li>
+                    <li><strong>list_price</strong>: Prix de référence pour promotions</li>
+                    <li><strong>categories</strong>: Catégories pour filtrage</li>
+                    <li><strong>condition</strong>: État de l'article</li>
+                    <li><strong>variant_options</strong>: Options (taille, couleur, etc.)</li>
+                    <li><strong>seller</strong>: Informations vendeur</li>
                 </ul>
             </div>
         </div>
         <div class="category-card" style="margin: 24px;">
             <div class="category-header">
-                <h2 class="category-title">📗 Documentation Google AI Shopping</h2>
+                <h2 class="category-title">📗 Google Merchant Center XML (Compatibilité)</h2>
             </div>
             <div style="padding: 20px;">
                 <h3 style="color: #34a853;">Core Fields (60% du score)</h3>
@@ -876,17 +1057,19 @@ class CommerceReadinessChecker:
                     <li>additional_image_link, color, size, gender</li>
                     <li>age_group, material, weight</li>
                 </ul>
-                <h3 style="color: #0079B2;">Agentic Fields (10% du score)</h3>
-                <ul style="line-height: 1.8;">
-                    <li>inventory_quantity, item_group_id</li>
-                </ul>
             </div>
         </div>
         """
 
-    def analyze_feed(self, xml_content: str) -> Dict:
-        """Analyze entire feed for both ACP and Google AI Shopping readiness"""
-        products = self.parse_xml_feed(xml_content)
+    def analyze_feed(self, content: str, format: str = "auto") -> Dict:
+        """Analyze entire feed for both ACP and Google AI Shopping readiness
+        
+        Args:
+            content: Feed content (XML or JSON)
+            format: "auto", "xml", or "json"
+        """
+        # Parse feed with auto-detection
+        products, feed_format, feed_metadata = self.parse_feed(content, format)
         
         if not products:
             return {
@@ -896,12 +1079,14 @@ class CommerceReadinessChecker:
                 "by_category": [],
                 "sample_products": [],
                 "field_analysis": {},
+                "feed_format": feed_format,
+                "feed_metadata": feed_metadata,
                 "acp": {"global_score": 0, "total_products": 0, "top_missing_fields": [], "field_analysis": {}},
                 "google_ai": {"global_score": 0, "total_products": 0, "field_coverage": []}
             }
         
-        # ACP Analysis
-        acp_results = [self.check_acp_compliance(p) for p in products]
+        # ACP Analysis (uses appropriate field set based on format)
+        acp_results = [self.check_acp_compliance(p, feed_format) for p in products]
         total_products = len(acp_results)
         acp_global_score = sum(r["score"] for r in acp_results) / total_products if total_products > 0 else 0
         
@@ -961,8 +1146,8 @@ class CommerceReadinessChecker:
                 "missing_count": missing_count
             })
         
-        # Detailed field analysis
-        field_analysis = self._analyze_fields_detailed(products)
+        # Detailed field analysis (uses appropriate field set based on format)
+        field_analysis = self._analyze_fields_detailed(products, feed_format)
         
         # Category analysis
         by_category = defaultdict(list)
@@ -999,6 +1184,8 @@ class CommerceReadinessChecker:
             "by_category": category_stats[:10],
             "sample_products": acp_results[:20],
             "field_analysis": field_analysis,
+            "feed_format": feed_format,
+            "feed_metadata": feed_metadata,
             "acp": {
                 "global_score": round(acp_global_score, 1),
                 "total_products": total_products,
@@ -1463,15 +1650,15 @@ def create_interface():
                 gr.HTML("""
                 <div class="hero-section">
                     <h1 class="hero-title">AI Shopping Readiness Checker</h1>
-                    <p class="hero-subtitle">Analysez votre feed Google Merchant Center pour optimiser votre visibilité dans l'AI Shopping</p>
+                    <p class="hero-subtitle">Analysez votre feed (ACP Feed API 2026-04-17 ou Google Merchant Center) pour optimiser votre visibilité dans l'AI Shopping</p>
                 </div>
                 """)
                 
                 with gr.Row():
                     with gr.Column(scale=4):
                         file_input = gr.File(
-                            label="📁 Sélectionnez votre fichier XML",
-                            file_types=[".xml"],
+                            label="📁 Sélectionnez votre fichier (XML ou JSON)",
+                            file_types=[".xml", ".json"],
                             type="binary"
                         )
                     with gr.Column(scale=1):
@@ -1539,27 +1726,42 @@ def create_interface():
             )
             
             try:
-                xml_content = file.decode('utf-8') if isinstance(file, bytes) else file
+                content = file.decode('utf-8') if isinstance(file, bytes) else file
                 
-                full_analysis = checker.analyze_feed(xml_content)
+                full_analysis = checker.analyze_feed(content)
                 if full_analysis["total_products"] == 0:
                     raise ValueError("Aucun produit trouvé dans le feed")
+                
+                feed_format = full_analysis["feed_format"]
+                feed_metadata = full_analysis["feed_metadata"]
                 
                 first_product = {
                     "product_brand": "Feed Analysis",
                     "product_category": "Multiple Categories"
                 }
                 
-                full_analysis["xml_content"] = xml_content
+                full_analysis["xml_content"] = content  # Keep for product details
                 
                 acp_analysis = full_analysis["acp"]
                 google_ai_analysis = full_analysis["google_ai"]
+                
+                # Display feed format in summary
+                format_badge = "🔵 ACP Feed API" if feed_format == "json" else "🟡 Google Merchant Center"
+                format_info = f"<span style='background: #0079B2; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px;'>{format_badge}</span>"
+                
+                if feed_metadata:
+                    metadata_text = f" • Source: {feed_metadata.get('source', 'Unknown')}"
+                    if feed_metadata.get('feed_id'):
+                        metadata_text += f" • Feed ID: {feed_metadata['feed_id']}"
+                else:
+                    metadata_text = ""
                 
                 global_summary_html = f"""
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px;">
                     <div class="category-card">
                         <div class="category-header">
                             <h2 class="category-title" style="color: #0079B2;">🔵 ACP Readiness (OpenAI)</h2>
+                            <div style="font-size: 12px;">{format_info}{metadata_text}</div>
                         </div>
                         <div style="text-align: center; padding: 20px;">
                             <div style="font-size: 48px; font-weight: bold; color: #0079B2; margin-bottom: 8px;">{acp_analysis['global_score']}%</div>
@@ -1569,6 +1771,7 @@ def create_interface():
                     <div class="category-card">
                         <div class="category-header">
                             <h2 class="category-title" style="color: #34a853;">🟢 Google AI Shopping</h2>
+                            <div style="font-size: 12px;">{format_info}</div>
                         </div>
                         <div style="text-align: center; padding: 20px;">
                             <div style="font-size: 48px; font-weight: bold; color: #34a853; margin-bottom: 8px;">{google_ai_analysis['global_score']}%</div>
@@ -1581,7 +1784,10 @@ def create_interface():
                 priorities_html = f"""
                 <div class="category-card">
                     <div class="category-header">
-                        <h2 class="category-title">🎯 Top 5 Priorités d'Implémentation</h2>
+                        <h2 class="category-title">🎯 Top Priorités d'Implémentation</h2>
+                        <div style="font-size: 12px; color: #666666;">
+                            Basé sur {format_badge} • {feed_metadata.get('source', 'Feed inconnu')}
+                        </div>
                     </div>
                     <div style="padding: 20px;">
                         <div style="margin-bottom: 16px; padding: 16px; background: #fef2f2; border-left: 4px solid #E53935; border-radius: 4px;">
