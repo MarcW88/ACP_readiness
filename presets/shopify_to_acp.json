@@ -1,0 +1,19 @@
+{
+  "name": "Shopify → ACP Feed API",
+  "version": "2026-04-17",
+  "description": "Mapping from Shopify product JSON export to ACP Feed API JSON format",
+  "rules": [
+    {"acp_field": "product.id", "source_field": "id", "transform": "direct"},
+    {"acp_field": "product.title", "source_field": "title", "transform": "direct"},
+    {"acp_field": "product.description", "source_field": "description", "transform": "direct"},
+    {"acp_field": "product.url", "source_field": "link", "transform": "direct"},
+    {"acp_field": "product.media", "source_field": "image_link", "transform": "to_array"},
+    {"acp_field": "variant.id", "source_field": "variant_id", "transform": "direct"},
+    {"acp_field": "variant.price", "source_field": "price", "transform": "direct"},
+    {"acp_field": "variant.availability", "source_field": "availability", "transform": "map_values", "params": {"in stock": "in_stock", "out of stock": "out_of_stock"}},
+    {"acp_field": "variant.categories", "source_field": "product_category", "transform": "split", "params": {"separator": " > "}},
+    {"acp_field": "variant.condition", "source_field": null, "transform": "constant", "params": {"value": "new"}},
+    {"acp_field": "variant.variant_options", "source_field": "size", "transform": "to_options"},
+    {"acp_field": "variant.seller", "source_field": "brand", "transform": "to_seller"}
+  ]
+}
