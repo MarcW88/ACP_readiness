@@ -4,19 +4,17 @@ import streamlit as st
 def render():
     """Render Step 4: Checkout Readiness Checklist (educational, no code)"""
 
-    st.markdown("### ✅ Étape 4 — Checklist Checkout Readiness")
-
     st.markdown("""
-    Cette section vous aide à **cadrer la suite** : ce qu'il faudra mettre en place côté backend 
-    pour que des agents IA puissent réellement effectuer des achats via ACP Checkout.
-    
-    > ⚠️ Ceci est un module de cadrage pédagogique, pas un test technique.
-    """)
+    <div style="margin-bottom: 2rem;">
+        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 8px 0;">Checkout Readiness</h2>
+        <p style="font-size: 14px; color: #6b7280; margin: 0;">Cadrage de ce qu'il faudra mettre en place pour ACP Checkout.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
 
     # Section 1: PSP & Payments
-    st.markdown("#### 💳 Payment Service Provider (PSP)")
+    st.markdown('<p style="font-size:14px;font-weight:600;color:#111827;">Payment Service Provider</p>', unsafe_allow_html=True)
 
     psp = st.selectbox(
         "Quel PSP utilisez-vous actuellement ?",
@@ -34,10 +32,10 @@ def render():
     elif psp in ["Mollie", "PayPal", "Autre"]:
         st.warning(f"⚠️ **{psp}** : compatibilité ACP non confirmée pour l'instant. Contactez votre PSP.")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
 
     # Section 2: API Readiness
-    st.markdown("#### 🔌 API & Endpoints")
+    st.markdown('<p style="font-size:14px;font-weight:600;color:#111827;">API & Endpoints</p>', unsafe_allow_html=True)
 
     st.markdown("""
     ACP Checkout requiert **5 endpoints REST** que votre backend doit exposer :
@@ -63,10 +61,10 @@ def render():
     st.progress(api_ready_count / len(endpoints),
                 text=f"Endpoints prêts : {api_ready_count}/{len(endpoints)}")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
 
     # Section 3: Capabilities
-    st.markdown("#### 🤝 Capabilities & Négociation")
+    st.markdown('<p style="font-size:14px;font-weight:600;color:#111827;">Capabilities & Négociation</p>', unsafe_allow_html=True)
 
     st.markdown("""
     À chaque réponse checkout, le seller doit déclarer ses *capabilities* :
@@ -80,10 +78,10 @@ def render():
         st.checkbox("Extensions activées (discounts, loyalty, etc.)", key="cap_extensions")
         st.checkbox("Fulfillment options configurées", key="cap_fulfillment")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
 
     # Section 4: Order Management
-    st.markdown("#### 📦 Order Management")
+    st.markdown('<p style="font-size:14px;font-weight:600;color:#111827;">Order Management</p>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -95,10 +93,10 @@ def render():
         st.checkbox("Gestion des retours", key="om_returns")
         st.checkbox("Support multi-devises", key="om_currencies")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
 
     # Section 5: Security
-    st.markdown("#### 🔒 Sécurité")
+    st.markdown('<p style="font-size:14px;font-weight:600;color:#111827;">Sécurité</p>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -108,10 +106,10 @@ def render():
         st.checkbox("PCI DSS compliance (via PSP)", key="sec_pci")
         st.checkbox("Rate limiting", key="sec_rate")
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
 
     # Summary
-    st.markdown("#### 📋 Résumé Checkout Readiness")
+    st.markdown('<p style="font-size:14px;font-weight:600;color:#111827;">Résumé</p>', unsafe_allow_html=True)
 
     all_checks = [
         st.session_state.get(f"checklist_ep{i}", False) for i in range(1, 6)
@@ -133,18 +131,22 @@ def render():
     total_items = len(all_checks)
     checkout_score = round(total_checked / total_items * 100) if total_items > 0 else 0
 
-    if checkout_score >= 80:
-        st.success(f"🎉 **Checkout Readiness : {checkout_score}%** — Vous êtes prêt pour un PoC ACP Checkout !")
-    elif checkout_score >= 40:
-        st.warning(f"⚠️ **Checkout Readiness : {checkout_score}%** — Quelques éléments à mettre en place.")
-    else:
-        st.info(f"📋 **Checkout Readiness : {checkout_score}%** — Cadrage en cours. C'est normal à ce stade.")
+    score_color = "#166534" if checkout_score >= 80 else "#92400e" if checkout_score >= 40 else "#6b7280"
+    message = "Prêt pour un PoC ACP Checkout." if checkout_score >= 80 else "Quelques éléments à mettre en place." if checkout_score >= 40 else "Cadrage en cours."
+    st.markdown(f"""
+    <div style="padding:16px 20px;background:#fafafa;border-radius:8px;border:1px solid #f0f0f0;">
+        <div style="display:flex;align-items:baseline;gap:12px;">
+            <span style="font-size:2rem;font-weight:700;color:{score_color};">{checkout_score}%</span>
+            <span style="font-size:14px;color:#6b7280;">{message}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
     st.markdown("""
-    ---
-    #### 📚 Ressources
-    - [ACP Documentation](https://www.agenticcommerce.dev/docs)
-    - [ACP Checkout Reference](https://www.agenticcommerce.dev/docs/reference/checkout)
-    - [Stripe Agentic Commerce](https://docs.stripe.com/agentic-commerce)
-    - [ACP GitHub](https://github.com/agentic-commerce-protocol/agentic-commerce-protocol)
-    """)
+    <p style="font-size:12px;color:#9ca3af;line-height:1.8;">
+        <a href="https://www.agenticcommerce.dev/docs" style="color:#6b7280;text-decoration:none;">ACP Documentation →</a><br>
+        <a href="https://www.agenticcommerce.dev/docs/reference/checkout" style="color:#6b7280;text-decoration:none;">Checkout API Reference →</a><br>
+        <a href="https://docs.stripe.com/agentic-commerce" style="color:#6b7280;text-decoration:none;">Stripe Agentic Commerce →</a>
+    </p>
+    """, unsafe_allow_html=True)

@@ -23,15 +23,20 @@ TRANSFORM_LABELS = {
 def render():
     """Render Step 2: Field Mapping"""
 
-    st.markdown("### 🔗 Étape 2 — Mapping vers ACP Feed API")
+    st.markdown("""
+    <div style="margin-bottom: 2rem;">
+        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 8px 0;">Mapping</h2>
+        <p style="font-size: 14px; color: #6b7280; margin: 0;">Configurez la correspondance entre vos champs source et ACP Feed API.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
     if not st.session_state.get("step_1_complete"):
-        st.warning("⚠️ Veuillez d'abord uploader un fichier dans l'étape 1.")
+        st.markdown('<div style="padding:2rem;text-align:center;color:#9ca3af;font-size:14px;">Uploadez d\'abord un fichier dans l\'onglet Upload.</div>', unsafe_allow_html=True)
         return
 
     parse_result = st.session_state.get("parse_result")
     if not parse_result:
-        st.warning("⚠️ Pas de données à mapper.")
+        st.markdown('<div style="padding:2rem;text-align:center;color:#9ca3af;font-size:14px;">Pas de données à mapper.</div>', unsafe_allow_html=True)
         return
 
     # Determine preset based on format
@@ -57,11 +62,6 @@ def render():
     source_fields = ["(non mappé)"] + sorted(parse_result.available_fields.keys())
     parser = FeedParser()
 
-    st.markdown("""
-    Configurez le mapping entre vos champs source et les champs ACP Feed API.  
-    Le mapping par défaut est pré-rempli en fonction du format détecté.
-    """)
-
     # Group rules by product/variant
     product_rules = [r for r in mapper.rules if r.acp_field.startswith("product.")]
     variant_rules = [r for r in mapper.rules if r.acp_field.startswith("variant.")]
@@ -69,15 +69,15 @@ def render():
     updated_rules = []
 
     # Product fields section
-    st.markdown("#### 📦 Product Fields")
+    st.markdown('<p style="font-size:14px;font-weight:600;color:#111827;margin:1.5rem 0 0.75rem 0;">Product</p>', unsafe_allow_html=True)
     for rule in product_rules:
         updated_rule = _render_mapping_row(rule, source_fields, parse_result, parser, is_required=rule.acp_field in ["product.id", "product.title"])
         updated_rules.append(updated_rule)
 
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
 
     # Variant fields section
-    st.markdown("#### 🏷️ Variant Fields")
+    st.markdown('<p style="font-size:14px;font-weight:600;color:#111827;margin:0 0 0.75rem 0;">Variant</p>', unsafe_allow_html=True)
     for rule in variant_rules:
         is_req = rule.acp_field in ["variant.id", "variant.price", "variant.availability"]
         updated_rule = _render_mapping_row(rule, source_fields, parse_result, parser, is_required=is_req)
@@ -88,34 +88,37 @@ def render():
     st.session_state["mapper"] = mapper
 
     # Summary
-    st.markdown("---")
+    st.markdown('<hr style="border:none;border-top:1px solid #f0f0f0;margin:1.5rem 0;">', unsafe_allow_html=True)
     mapped = [r for r in updated_rules if r.source_field and r.transform != "none"]
     unmapped = [r for r in updated_rules if not r.source_field or r.transform == "none"]
 
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Champs mappés", f"{len(mapped)} / {len(updated_rules)}")
+        st.metric("Mappés", f"{len(mapped)} / {len(updated_rules)}")
     with col2:
-        if unmapped:
-            unmapped_names = [r.acp_field for r in unmapped]
-            st.warning(f"Non mappés : {', '.join(unmapped_names)}")
-        else:
-            st.success("Tous les champs sont mappés !")
+        st.metric("Non mappés", f"{len(unmapped)}")
+
+    if unmapped:
+        unmapped_names = [r.acp_field for r in unmapped]
+        st.markdown(f'<div style="font-size:13px;color:#9ca3af;margin-top:8px;">Non mappés : {', '.join(unmapped_names)}</div>', unsafe_allow_html=True)
 
     st.session_state["step_2_complete"] = True
-    st.success("✅ Mapping configuré. Passez à l'étape suivante pour générer le JSON ACP.")
+    st.markdown('<div style="margin-top:1.5rem;padding:12px 16px;background:#f9fafb;border-radius:6px;border:1px solid #f0f0f0;font-size:14px;color:#374151;">Mapping configuré. Passez à l\'onglet <strong>JSON ACP + Plan</strong>.</div>', unsafe_allow_html=True)
 
 
 def _render_mapping_row(rule, source_fields, parse_result, parser, is_required=False):
     """Render a single mapping row with source selector and transform"""
     field_label = rule.acp_field.replace("product.", "").replace("variant.", "")
-    badge = "🔴 Required" if is_required else "🔵 Recommended"
+    if is_required:
+        badge_html = '<span style="font-size:10px;padding:1px 6px;background:#fef2f2;color:#991b1b;border-radius:3px;margin-left:6px;">required</span>'
+    else:
+        badge_html = '<span style="font-size:10px;padding:1px 6px;background:#eff6ff;color:#1e40af;border-radius:3px;margin-left:6px;">recommended</span>'
 
     with st.container():
         cols = st.columns([2, 2, 2, 1])
 
         with cols[0]:
-            st.markdown(f"**{rule.acp_field}** <small>{badge}</small>", unsafe_allow_html=True)
+            st.markdown(f'<span style="font-size:13px;font-weight:500;color:#111827;">{rule.acp_field}</span>{badge_html}', unsafe_allow_html=True)
 
         with cols[1]:
             current_source = rule.source_field if rule.source_field else "(non mappé)"
