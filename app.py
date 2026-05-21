@@ -1,7 +1,7 @@
 import streamlit as st
 
 st.set_page_config(
-    page_title="ACP Migration Assistant",
+    page_title="AI Commerce Feed Assistant",
     page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -175,8 +175,8 @@ st.markdown("""
 with st.sidebar:
     st.markdown("""
     <div style="margin-bottom: 2rem;">
-        <div style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 4px;">ACP Migration Assistant</div>
-        <div style="font-size: 13px; color: #6b7280;">Feed → ACP Feed API 2026-04-17</div>
+        <div style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 4px;">AI Commerce Feed Assistant</div>
+        <div style="font-size: 13px; color: #6b7280;">Feed → JSON structuré pour agents IA</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -185,7 +185,7 @@ with st.sidebar:
     steps = [
         ("1", "Upload & Détection", "step_1_complete"),
         ("2", "Mapping des champs", "step_2_complete"),
-        ("3", "JSON ACP + Plan", "step_3_complete"),
+        ("3", "JSON + Plan d'action", "step_3_complete"),
         ("4", "Checklist Checkout", None),
     ]
     for num, label, key in steps:
@@ -199,12 +199,26 @@ with st.sidebar:
 
     st.markdown("""
     <div style="font-size: 12px; color: #9ca3af; line-height: 1.8;">
-        <div style="font-weight: 600; color: #6b7280; margin-bottom: 4px;">ACP Feed API</div>
+        <div style="font-weight: 600; color: #6b7280; margin-bottom: 4px;">Format cible (draft ACP 2026-04-17)</div>
+        <div>JSON structuré inspiré des travaux ACP pour préparer les feeds aux assistants IA.</div>
+        <br>
         <div><strong>Product</strong> — id, title</div>
         <div><strong>Variant</strong> — id, price, availability</div>
         <br>
-        <a href="https://www.agenticcommerce.dev/docs" style="color: #6b7280; text-decoration: none;">Documentation →</a><br>
-        <a href="https://github.com/agentic-commerce-protocol/agentic-commerce-protocol" style="color: #6b7280; text-decoration: none;">GitHub →</a>
+        <a href="https://www.agenticcommerce.dev/docs" style="color: #6b7280; text-decoration: none;">ACP Docs →</a><br>
+        <a href="https://github.com/agentic-commerce-protocol/agentic-commerce-protocol" style="color: #6b7280; text-decoration: none;">ACP GitHub →</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    st.markdown("""
+    <div style="font-size: 12px; color: #9ca3af; line-height: 1.8;">
+        <div style="font-weight: 600; color: #6b7280; margin-bottom: 4px;">Google AI & UCP</div>
+        <div>Champs critiques AI Mode : title, description, images, GTIN, categories</div>
+        <div>Attributs conversationnels à venir (UCP)</div>
+        <br>
+        <a href="https://developers.google.com/shopping-content" style="color: #6b7280; text-decoration: none;">Merchant Center →</a>
     </div>
     """, unsafe_allow_html=True)
 
@@ -214,7 +228,7 @@ from ui import step_upload, step_mapping, step_output, step_checklist
 tab1, tab2, tab3, tab4 = st.tabs([
     "Upload",
     "Mapping",
-    "JSON ACP + Plan",
+    "JSON + Plan d'action",
     "Checkout Readiness"
 ])
 

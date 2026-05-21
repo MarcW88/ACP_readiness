@@ -9,7 +9,7 @@ def render():
     <div style="margin-bottom: 2rem;">
         <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 8px 0;">Upload & Détection</h2>
         <p style="font-size: 14px; color: #6b7280; margin: 0; line-height: 1.6;">
-            Uploadez votre feed produit. Le format sera détecté automatiquement.
+            Uploadez votre feed produit. Le format sera détecté automatiquement et converti en JSON structuré pour agents IA.
         </p>
     </div>
     """, unsafe_allow_html=True)

@@ -11,8 +11,8 @@ def render():
 
     st.markdown("""
     <div style="margin-bottom: 2rem;">
-        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 8px 0;">JSON ACP + Plan d'action</h2>
-        <p style="font-size: 14px; color: #6b7280; margin: 0;">Votre feed converti et les prochaines actions de migration.</p>
+        <h2 style="font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0 0 8px 0;">JSON + Plan d'action</h2>
+        <p style="font-size: 14px; color: #6b7280; margin: 0;">Votre feed converti en JSON inspiré ACP et les prochaines actions de migration.</p>
     </div>
     """, unsafe_allow_html=True)
 
